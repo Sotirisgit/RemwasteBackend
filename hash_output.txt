@@ -1,0 +1,2 @@
+Your working hash: $2b$08$whmZE8vt778Vc5JBRHm.EOYEy/5ALseMKDBOl.G5h1/YgFBRp.uda
+Test verification: true

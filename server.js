@@ -10,16 +10,10 @@ app.use(bodyParser.json());
 
 const SECRET_KEY = "supersecretkey";
 
-// Generate a fresh hash for "12345" - let's create it dynamically
-const generateHash = () => {
-  return bcrypt.hashSync("12345", 8);
-};
-
-// ✅ User with dynamically generated hash
 const users = [
   {
     username: "remwaste",
-    password: generateHash(), // Fresh hash every time
+    password: "$2b$08$4yiVXYSeOh0LPiM4UJYLYuWGcWOl/r.Ut2bY4EuEvi.GVpWk9o8oG",
   }
 ];
 
@@ -28,70 +22,47 @@ let items = [
   { id: 2, name: "Test Item 2" },
 ];
 
-// Root endpoint
 app.get("/", (req, res) => {
-  res.json({ 
-    message: "RemWaste Backend API is running!",
-    endpoints: ["/login", "/items", "/test-hash"]
-  });
+  res.json({ message: "RemWaste Backend API is running!" });
 });
 
-// Test endpoint to debug bcrypt
 app.post("/test-hash", (req, res) => {
   const { password } = req.body;
-  const testHash = generateHash();
-  const isValid = bcrypt.compareSync(password || "12345", testHash);
+  const testPassword = password || "12345";
+  const userHash = users[0].password;
+  const isValid = bcrypt.compareSync(testPassword, userHash);
   
   res.json({
-    providedPassword: password,
-    testPassword: "12345",
-    generatedHash: testHash,
-    isValidMatch: isValid,
-    userHash: users[0].password,
-    userHashMatch: bcrypt.compareSync(password || "12345", users[0].password)
+    providedPassword: testPassword,
+    storedHash: userHash,
+    hashMatches: isValid,
+    message: isValid ? "✅ Hash works!" : "❌ Hash doesn't match"
   });
 });
 
 app.post("/login", (req, res) => {
-  console.log("=== LOGIN ATTEMPT ===");
-  console.log("Request body:", req.body);
+  console.log("Login attempt:", req.body);
   
   const { username, password } = req.body;
   
-  // Validate input
   if (!username || !password) {
-    console.log("Missing username or password");
     return res.status(400).json({ error: "Username and password are required" });
   }
   
-  // Find user
   const user = users.find((u) => u.username === username);
-  console.log("User found:", !!user);
-  console.log("Available users:", users.map(u => u.username));
 
   if (!user) {
-    console.log("User not found for username:", username);
     return res.status(401).json({ error: "User not found" });
   }
 
-  // Check password
-  console.log("Checking password...");
-  console.log("Provided password:", password);
-  console.log("Stored hash:", user.password);
-  
   const passwordIsValid = bcrypt.compareSync(password, user.password);
-  console.log("Password is valid:", passwordIsValid);
+  console.log("Password valid:", passwordIsValid);
 
   if (!passwordIsValid) {
-    console.log("Password validation failed");
     return res.status(401).json({ error: "Invalid password" });
   }
 
-  // Generate token
   const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
-  console.log("Login successful! Token generated.");
-  console.log("=== LOGIN SUCCESS ===");
-  
   res.json({ token });
 });
 
@@ -150,8 +121,4 @@ app.delete("/items/:id", verifyToken, (req, res) => {
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
-  console.log(`Available users: ${users.map(u => u.username).join(', ')}`);
-  console.log(`Test password: 12345`);
 });
-
-

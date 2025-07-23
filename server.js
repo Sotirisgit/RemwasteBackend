@@ -8,48 +8,150 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-const SECRET_KEY = "secret";
-let users = [{ username: "test", password: bcrypt.hashSync("1234", 8) }];
-let items = [{ id: 1, name: "Sample Item" }];
-let idCounter = 2;
+const SECRET_KEY = "supersecretkey";
 
-// Login endpoint
-app.post("/login", (req, res) => {
-  const { username, password } = req.body;
-  const user = users.find((u) => u.username === username);
-  if (user && bcrypt.compareSync(password, user.password)) {
-    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
-    return res.json({ token });
+// Generate a fresh hash for "12345" - let's create it dynamically
+const generateHash = () => {
+  return bcrypt.hashSync("12345", 8);
+};
+
+// ✅ User with dynamically generated hash
+const users = [
+  {
+    username: "remwaste",
+    password: generateHash(), // Fresh hash every time
   }
-  return res.status(401).json({ message: "Invalid credentials" });
+];
+
+let items = [
+  { id: 1, name: "Test Item 1" },
+  { id: 2, name: "Test Item 2" },
+];
+
+// Root endpoint
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "RemWaste Backend API is running!",
+    endpoints: ["/login", "/items", "/test-hash"]
+  });
 });
 
-// CRUD routes for items
-app.get("/items", (req, res) => res.json(items));
-
-app.post("/items", (req, res) => {
-  const item = { id: idCounter++, name: req.body.name };
-  items.push(item);
-  res.status(201).json(item);
+// Test endpoint to debug bcrypt
+app.post("/test-hash", (req, res) => {
+  const { password } = req.body;
+  const testHash = generateHash();
+  const isValid = bcrypt.compareSync(password || "12345", testHash);
+  
+  res.json({
+    providedPassword: password,
+    testPassword: "12345",
+    generatedHash: testHash,
+    isValidMatch: isValid,
+    userHash: users[0].password,
+    userHashMatch: bcrypt.compareSync(password || "12345", users[0].password)
+  });
 });
 
-app.put("/items/:id", (req, res) => {
-  const item = items.find((i) => i.id == req.params.id);
-  if (!item) return res.sendStatus(404);
-  item.name = req.body.name;
+app.post("/login", (req, res) => {
+  console.log("=== LOGIN ATTEMPT ===");
+  console.log("Request body:", req.body);
+  
+  const { username, password } = req.body;
+  
+  // Validate input
+  if (!username || !password) {
+    console.log("Missing username or password");
+    return res.status(400).json({ error: "Username and password are required" });
+  }
+  
+  // Find user
+  const user = users.find((u) => u.username === username);
+  console.log("User found:", !!user);
+  console.log("Available users:", users.map(u => u.username));
+
+  if (!user) {
+    console.log("User not found for username:", username);
+    return res.status(401).json({ error: "User not found" });
+  }
+
+  // Check password
+  console.log("Checking password...");
+  console.log("Provided password:", password);
+  console.log("Stored hash:", user.password);
+  
+  const passwordIsValid = bcrypt.compareSync(password, user.password);
+  console.log("Password is valid:", passwordIsValid);
+
+  if (!passwordIsValid) {
+    console.log("Password validation failed");
+    return res.status(401).json({ error: "Invalid password" });
+  }
+
+  // Generate token
+  const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
+  console.log("Login successful! Token generated.");
+  console.log("=== LOGIN SUCCESS ===");
+  
+  res.json({ token });
+});
+
+const verifyToken = (req, res, next) => {
+  const token = req.headers["authorization"]?.split(" ")[1];
+  if (!token) return res.status(403).json({ error: "No token provided" });
+
+  jwt.verify(token, SECRET_KEY, (err, decoded) => {
+    if (err) return res.status(401).json({ error: "Invalid token" });
+    req.user = decoded;
+    next();
+  });
+};
+
+app.get("/items", verifyToken, (req, res) => {
+  res.json(items);
+});
+
+app.post("/items", verifyToken, (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Item name is required" });
+  }
+  const newItem = { id: Date.now(), name };
+  items.push(newItem);
+  res.json(newItem);
+});
+
+app.put("/items/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ error: "Item name is required" });
+  }
+  
+  const item = items.find((item) => item.id === parseInt(id));
+  if (!item) return res.status(404).json({ error: "Item not found" });
+  
+  item.name = name;
   res.json(item);
 });
 
-app.delete("/items/:id", (req, res) => {
-  items = items.filter((i) => i.id != req.params.id);
-  res.sendStatus(204);
+app.delete("/items/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+  const originalLength = items.length;
+  items = items.filter((item) => item.id !== parseInt(id));
+  
+  if (items.length === originalLength) {
+    return res.status(404).json({ error: "Item not found" });
+  }
+  
+  res.json({ success: true });
 });
 
-//For running localy
-//app.listen(4000, () => console.log("API running http://localhost:4000"));
-
-
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API running on port ${PORT}`)); //render
+app.listen(PORT, () => {
+  console.log(`API running on port ${PORT}`);
+  console.log(`Available users: ${users.map(u => u.username).join(', ')}`);
+  console.log(`Test password: 12345`);
+});
 
 
